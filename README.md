@@ -1,29 +1,7 @@
 # realtek-alc245-linux-fix
 
-I'll check it out sometime.
-
-
 Realtek ALC245 Linux Fix (Unsolicited / Button Events)
 
-This repository documents and experiments with undocumented Realtek ALC245
-behavior observed on certain OEM laptops (HP, etc.), where media / jack /
-button events work correctly on Windows but behave inconsistently or not at all
-on Linux.
+The stop/play button of my own kz edx pro x headset was not working on linux, so I did something that worked using microphone explosions, don't press the button completely, just tap it lightly, don't hesitate to write if there is an error. 
 
-Problem Summary
-
-- Button / media / jack related events:
-  - Trigger randomly ("ghost presses")
-  - Trigger without physical input
-  - Not working
-- Windows driver handles this correctly
-- Linux HDA driver receives incomplete or incorrect unsolicited events
-
-Hypothesis
-
-The Windows Realtek driver sends undocumented HDA verbs or GPIO operations
-that are not currently implemented or triggered in Linux.
-
-Status
-
-🟡 Research / reverse engineering 
+Note: Yes, it works even if you shout towards the button:D
