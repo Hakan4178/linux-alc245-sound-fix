@@ -1,9 +1,9 @@
 #!/bin/bash
-# install.sh - KZ Touch Control
+# install.sh - linux-alc245-sound-fix
 
 set -e  
 
-echo "🔧 KZ Touch Control ..."
+echo "🔧 linux-alc245-sound-fix ..."
 echo "=============================================="
 
 # 1. Sistem güncellemeleri
