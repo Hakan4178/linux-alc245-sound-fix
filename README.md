@@ -1,5 +1,8 @@
 # realtek-alc245-linux-fix
 
+I'll check it out sometime.
+
+
 Realtek ALC245 Linux Fix (Unsolicited / Button Events)
 
 This repository documents and experiments with undocumented Realtek ALC245
