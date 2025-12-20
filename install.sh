@@ -1,34 +1,35 @@
 #!/bin/bash
 # install.sh - linux-alc245-sound-fix
+# Tested on Kali / Debian-based systems
 
 set -e
 
-echo "🔧 linux-alc245-sound-fix kuruluyor..."
+echo "🔧 Installing linux-alc245-sound-fix"
 echo "=============================================="
 
-# 1. Sistem güncellemeleri
-echo "📦 Sistem güncelleniyor..."
+# 1. System update
+echo "📦 Updating system packages..."
 sudo apt update
 sudo apt upgrade -y
 
-# 2. Gerekli sistem paketleri
-echo "📦 Bağımlılıklar yükleniyor..."
+# 2. Required system dependencies
+echo "📦 Installing system dependencies..."
 sudo apt install -y \
     python3 \
     python3-venv \
     python3-pip \
+    python3-dev \
     libportaudio2 \
+    portaudio19-dev \
     libasound2-dev \
     alsa-utils \
-    portaudio19-dev \
-    python3-dev \
     git \
-    python3-evdev  # evdev için sistem paketi ekle
+    python3-evdev
 
-# 3. Projeyi indir
-echo "📥 Proje indiriliyor..."
+# 3. Clone or update repository
+echo "📥 Fetching project repository..."
 if [ -d "linux-alc245-sound-fix" ]; then
-    echo "⚠️  Proje zaten var, güncelleniyor..."
+    echo "⚠️  Repository already exists, updating..."
     cd linux-alc245-sound-fix
     git pull
 else
@@ -36,26 +37,26 @@ else
     cd linux-alc245-sound-fix
 fi
 
-# 4. Sanal ortam oluştur ve aktif et
-echo "🐍 Python sanal ortamı oluşturuluyor..."
+# 4. Create Python virtual environment
+echo "🐍 Creating Python virtual environment..."
 python3 -m venv venv
+
+# 5. Install Python dependencies inside venv
+echo "📦 Installing Python dependencies..."
 source venv/bin/activate
-
-# 5. Python paketlerini kur
-echo "📦 Python bağımlılıkları yükleniyor..."
 pip install --upgrade pip
-pip install numpy sounddevice
-
-# evdev zaten sistemde yüklü, fakat Python binding'ini de yükle
-pip install evdev
+pip install numpy sounddevice evdev
+deactivate
 
 echo ""
-echo "🎉 Kurulum tamamlandı!"
-echo "======================="
+echo "🎉 Installation completed successfully!"
+echo "======================================="
 echo ""
-echo "🔧 Çalıştırmak için:"
-echo "1. cd linux-alc245-sound-fix"
-echo "2. source venv/bin/activate"
-echo "3. sudo python3 quick_hardening.py"
+echo "▶ How to run:"
+echo "cd linux-alc245-sound-fix && sudo -E venv/bin/python quick_hardening.py"
+echo "⚠️  NOTE:"
+echo "- sudo is required for input/audio device access"
+echo "- Do NOT use system python or pip outside the virtual environment"
 echo ""
-echo "⚠️  NOT: Script'i çalıştırmak için sudo gereklidir (evdev cihaz erişimi için)"
+echo "💡 Tip:"
+echo "You can install this as a systemd service for automatic startup."
