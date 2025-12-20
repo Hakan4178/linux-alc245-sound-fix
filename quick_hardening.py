@@ -1,4 +1,4 @@
-# quick_hardening.py — hızlı alternatif (konservatif)
+# quick_hardening.py 
 #!/usr/bin/env python3
 import time, numpy as np, sounddevice as sd
 from evdev import UInput, ecodes
@@ -7,16 +7,16 @@ from collections import deque
 DEVICE="hw:2,0"
 RATE=48000
 BLOCKSIZE=128
-CALIBRATE_SECONDS=1.9
+CALIBRATE_SECONDS=2.1
 
 WINDOW_MS=120
 MIN_BURST_BLOCKS=6
 REL_FACTOR=13
-MIN_ABS_THRESHOLD=9500
+MIN_ABS_THRESHOLD=9800
 RELEASE_FACTOR=0.35
 RELEASE_STABLE_MS=120
 
-SUPPRESS_MS=400
+SUPPRESS_MS=380
 PRESS_DELAY=0.04
 
 ui = UInput({ecodes.EV_KEY:[ecodes.KEY_PLAYPAUSE]}, name="headset-quick-hard")
