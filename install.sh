@@ -7,10 +7,6 @@ set -e
 echo "🔧 Installing linux-alc245-sound-fix"
 echo "=============================================="
 
-# 1. System update
-echo "📦 Updating system packages..."
-sudo apt update
-sudo apt upgrade -y
 
 # 2. Required system dependencies
 echo "📦 Installing system dependencies..."
