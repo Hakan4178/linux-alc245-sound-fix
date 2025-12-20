@@ -4,7 +4,7 @@ Realtek ALC245 Linux Fix (Unsolicited / Button Events)
 
 The stop/play button of my own kz edx pro x headset was not working on linux, so I did something that worked using microphone explosions, don't press the button completely, just tap it lightly, don't hesitate to write if there is an error. 
 
-İnstallation 
+# Installation 
 
 Download install.sh 
 
@@ -16,7 +16,7 @@ and (in the same folder)
 
 
 
-How It Works (detailed)
+# How It Works (detailed)
 
 Most wired headsets do not use a mechanical button.
 
@@ -41,7 +41,7 @@ A short burst of extreme amplitude changes
 
 This project listens for that exact signature.
 
-🧠 Detection Strategy
+# Detection Strategy
 
 The script continuously captures raw microphone samples and looks for:
 
@@ -82,7 +82,7 @@ Works even when the button is not exposed to the OS
 
 If the headset button creates a transient on the mic line — this works.
 
-Fun Fact
+# Fun Fact
 
 The same transient can be produced by:
 
@@ -100,7 +100,7 @@ External USB microphones
 
 (Yes — you can pause music by blowing into your mic 😄)
 
-⚠️ Important Notes
+# ⚠️ Important Notes
 
 This is not reading a button state
 
