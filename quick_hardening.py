@@ -14,7 +14,7 @@ from collections import deque
 # "playerctl"  -> user session DBus (no sudo). Recommended when run as user.
 # "uinput"     -> virtual input device (requires root / sudo). Use if playerctl unavailable.
 # "auto"       -> prefer playerctl if available & DBUS session present, else fallback to uinput
-BACKEND = "auto"
+BACKEND = "uinput"
 
 RATE = 48000
 BLOCKSIZE = 128
