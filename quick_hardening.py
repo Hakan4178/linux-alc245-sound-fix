@@ -5,6 +5,8 @@ import sounddevice as sd
 from evdev import UInput, ecodes
 from collections import deque
 import sys
+import subprocess
+import shutil
 
 # ================= USER CONFIG =================
 RATE = 48000
@@ -22,6 +24,21 @@ SUPPRESS_MS = 360
 PRESS_DELAY = 0.04
 # ===============================================
 
+# Backend selection: "uinput" or "playerctl"
+# - playerctl uses DBus and is DE-agnostic (recommended)
+# - uinput injects a virtual key device (may be ignored by some DEs)
+BACKEND = "playerctl"
+# BACKEND = "uinput"
+
+# ---------- sanity checks for backends ----------
+if BACKEND not in ("uinput", "playerctl"):
+    print("⚠️  Invalid BACKEND in config. Must be 'uinput' or 'playerctl'.")
+    sys.exit(1)
+
+if BACKEND == "playerctl":
+    if shutil.which("playerctl") is None:
+        print("❌ 'playerctl' not found. Install it (e.g. 'sudo pacman -S playerctl' or 'sudo apt install playerctl') or switch BACKEND to 'uinput'.")
+        sys.exit(1)
 
 # ---------- Device selector ----------
 def select_input_device():
@@ -52,14 +69,15 @@ def select_input_device():
 
 DEVICE_INDEX = select_input_device()
 print(f"\n✅ Using device #{DEVICE_INDEX}: {sd.query_devices(DEVICE_INDEX)['name']}")
+print(f"[+] Backend selected: {BACKEND}")
 
-
-# ---------- Virtual key ----------
-ui = UInput(
-    {ecodes.EV_KEY: [ecodes.KEY_PLAYPAUSE]},
-    name="headset-quick-hard"
-)
-
+# ---------- Virtual key (only for uinput backend) ----------
+ui = None
+if BACKEND == "uinput":
+    ui = UInput(
+        {ecodes.EV_KEY: [ecodes.KEY_PLAYPAUSE, ecodes.KEY_MEDIA]},
+        name="headset-quick-hard"
+    )
 
 # ---------- Calibration ----------
 print("\n🎚️ Calibrating background noise...")
@@ -93,21 +111,31 @@ print(f"   baseline_abs = {int(baseline_abs)}")
 print(f"   sigma_abs    = {int(sigma_abs)}")
 print(f"   auto_thr     = {int(auto_thr)}")
 
-
 # ---------- Runtime state ----------
 events = deque()
 last_fire = 0
 suppress_until = 0
 
-
 def emit():
-    print("🎵 PLAY/PAUSE")
-    ui.write(ecodes.EV_KEY, ecodes.KEY_PLAYPAUSE, 1)
-    ui.syn()
-    time.sleep(PRESS_DELAY)
-    ui.write(ecodes.EV_KEY, ecodes.KEY_PLAYPAUSE, 0)
-    ui.syn()
-
+    if BACKEND == "uinput":
+        print("🎵 Emitting PLAY/PAUSE via uinput")
+        ui.write(ecodes.EV_KEY, ecodes.KEY_MEDIA, 1)
+        ui.syn()
+        time.sleep(PRESS_DELAY)
+        ui.write(ecodes.EV_KEY, ecodes.KEY_MEDIA, 0)
+        ui.syn()
+    elif BACKEND == "playerctl":
+        # Fire playerctl play-pause; swallow output
+        print("🎵 Emitting PLAY/PAUSE via playerctl")
+        try:
+            subprocess.run(
+                ["playerctl", "play-pause"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False
+            )
+        except Exception as e:
+            print("❌ Failed to call playerctl:", e)
 
 def cb(indata, frames, t, status):
     global last_fire, suppress_until
@@ -139,7 +167,6 @@ def cb(indata, frames, t, status):
             "max", maxabs
         )
 
-
 # ---------- Main loop ----------
 print("\n🎧 Listening...")
 print("➡️  Press headset button to trigger play/pause")
@@ -162,4 +189,5 @@ except KeyboardInterrupt:
     print("\n🛑 Stopped by user")
 
 finally:
-    ui.close()
+    if ui:
+        ui.close()
