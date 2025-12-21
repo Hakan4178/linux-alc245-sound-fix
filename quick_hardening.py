@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 import time
+import os
+import sys
+import shutil
+import subprocess
 import numpy as np
 import sounddevice as sd
 from evdev import UInput, ecodes
 from collections import deque
-import sys
-import subprocess
-import shutil
 
-# ================= USER CONFIG =================
+# ---------------- Config ----------------
+# BACKEND OPTIONS:
+# "playerctl"  -> user session DBus (no sudo). Recommended when run as user.
+# "uinput"     -> virtual input device (requires root / sudo). Use if playerctl unavailable.
+# "auto"       -> prefer playerctl if available & DBUS session present, else fallback to uinput
+BACKEND = "auto"
+
 RATE = 48000
 BLOCKSIZE = 128
 CALIBRATE_SECONDS = 2.6
@@ -17,28 +24,42 @@ WINDOW_MS = 120
 MIN_BURST_BLOCKS = 9
 REL_FACTOR = 13
 MIN_ABS_THRESHOLD = 13000
-RELEASE_FACTOR = 0.35
-RELEASE_STABLE_MS = 120
 
-SUPPRESS_MS = 360
+SUPPRESS_MS = 340
 PRESS_DELAY = 0.04
-# ===============================================
+# ----------------------------------------
 
-# Backend selection: "uinput" or "playerctl"
-# - playerctl uses DBus and is DE-agnostic (recommended)
-# - uinput injects a virtual key device (may be ignored by some DEs)
-BACKEND = "playerctl"
-# BACKEND = "uinput"
-
-# ---------- sanity checks for backends ----------
-if BACKEND not in ("uinput", "playerctl"):
-    print("⚠️  Invalid BACKEND in config. Must be 'uinput' or 'playerctl'.")
-    sys.exit(1)
-
-if BACKEND == "playerctl":
+def detect_playerctl_available():
+    """Return True if 'playerctl' command exists AND a DBUS session is present (so it can reach user players)."""
     if shutil.which("playerctl") is None:
-        print("❌ 'playerctl' not found. Install it (e.g. 'sudo pacman -S playerctl' or 'sudo apt install playerctl') or switch BACKEND to 'uinput'.")
-        sys.exit(1)
+        return False
+    # If running as root, DBUS session usually not present -> playerctl won't see user players
+    # Prefer to require DBUS_SESSION_BUS_ADDRESS environment variable
+    if os.getenv("DBUS_SESSION_BUS_ADDRESS"):
+        return True
+    # Sometimes user runs with sudo -E preserving env; allow that too
+    return False
+
+def emit_playerctl():
+    """Call playerctl play-pause in background (no blocking output)."""
+    try:
+        subprocess.Popen(["playerctl", "play-pause"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        print("❌ playerctl call failed:", e)
+
+def init_uinput():
+    """Initialize and return a UInput device (may require root)."""
+    try:
+        ui_dev = UInput({ecodes.EV_KEY: [ecodes.KEY_PLAYPAUSE, ecodes.KEY_MEDIA]}, name="headset-quick-hard")
+        return ui_dev
+    except Exception as e:
+        print("❌ Failed to create uinput device:", e)
+        return None
+
+# ---------- Validate BACKEND config ----------
+if BACKEND not in ("uinput", "playerctl", "auto"):
+    print("⚠️ Invalid BACKEND in config. Must be 'uinput', 'playerctl' or 'auto'.")
+    sys.exit(1)
 
 # ---------- Device selector ----------
 def select_input_device():
@@ -46,9 +67,8 @@ def select_input_device():
     inputs = []
 
     print("\n🎧 Available input devices:\n")
-
     for i, d in enumerate(devices):
-        if d["max_input_channels"] > 0:
+        if d.get("max_input_channels", 0) > 0:
             inputs.append(i)
             print(f"[{i}] {d['name']} (inputs={d['max_input_channels']})")
 
@@ -58,7 +78,10 @@ def select_input_device():
 
     while True:
         try:
-            choice = int(input("\nSelect device index: "))
+            choice = input("\nSelect device index (or press Enter to use default 0): ").strip()
+            if choice == "":
+                return inputs[0]
+            choice = int(choice)
             if choice in inputs:
                 return choice
             else:
@@ -66,45 +89,73 @@ def select_input_device():
         except ValueError:
             print("⚠️ Please enter a number.")
 
-
 DEVICE_INDEX = select_input_device()
 print(f"\n✅ Using device #{DEVICE_INDEX}: {sd.query_devices(DEVICE_INDEX)['name']}")
-print(f"[+] Backend selected: {BACKEND}")
 
-# ---------- Virtual key (only for uinput backend) ----------
+# ---------- Backend selection logic (auto / explicit) ----------
+actual_backend = None
 ui = None
-if BACKEND == "uinput":
-    ui = UInput(
-        {ecodes.EV_KEY: [ecodes.KEY_PLAYPAUSE, ecodes.KEY_MEDIA]},
-        name="headset-quick-hard"
-    )
+emit_func = None
+
+if BACKEND == "playerctl":
+    if shutil.which("playerctl") is None:
+        print("❌ BACKEND is set to 'playerctl' but playerctl executable not found. Install playerctl or use BACKEND='auto'/'uinput'.")
+        sys.exit(1)
+    # Warn if run as root
+    if os.geteuid() == 0 and not os.getenv("DBUS_SESSION_BUS_ADDRESS"):
+        print("⚠️ Running as root: playerctl may not be able to reach your user DBus session. Consider running without sudo or use BACKEND='uinput'.")
+    actual_backend = "playerctl"
+    emit_func = emit_playerctl
+
+elif BACKEND == "uinput":
+    actual_backend = "uinput"
+    ui = init_uinput()
+    if ui is None:
+        print("❌ Failed to init uinput. Are you running with sufficient privileges?")
+        sys.exit(1)
+    def _emit_uinput():
+        ui.write(ecodes.EV_KEY, ecodes.KEY_MEDIA, 1); ui.syn()
+        time.sleep(PRESS_DELAY)
+        ui.write(ecodes.EV_KEY, ecodes.KEY_MEDIA, 0); ui.syn()
+    emit_func = _emit_uinput
+
+elif BACKEND == "auto":
+    # prefer playerctl if it exists and DBUS session looks available
+    if detect_playerctl_available():
+        actual_backend = "playerctl"
+        emit_func = emit_playerctl
+        print("✅ auto: playerctl detected and will be used (user DBus available).")
+    else:
+        # fallback to uinput
+        actual_backend = "uinput"
+        ui = init_uinput()
+        if ui is None:
+            print("❌ auto: playerctl not available and uinput initialization failed. Exiting.")
+            sys.exit(1)
+        def _emit_uinput():
+            ui.write(ecodes.EV_KEY, ecodes.KEY_MEDIA, 1); ui.syn()
+            time.sleep(PRESS_DELAY)
+            ui.write(ecodes.EV_KEY, ecodes.KEY_MEDIA, 0); ui.syn()
+        emit_func = _emit_uinput
+        print("⚠️ auto: playerctl not detected or DBUS not available -> falling back to uinput (requires root).")
+
+print(f"[+] Actual backend: {actual_backend}")
 
 # ---------- Calibration ----------
 print("\n🎚️ Calibrating background noise...")
 print("➡️  Do NOT press the headset button.")
 
 cal = []
-
 def cal_cb(indata, frames, t, status):
     cal.append(np.mean(np.abs(indata[:, 0].astype(int))))
 
-with sd.InputStream(
-    device=DEVICE_INDEX,
-    samplerate=RATE,
-    channels=1,
-    dtype="int16",
-    blocksize=BLOCKSIZE,
-    callback=cal_cb,
-    latency="low"
-):
+with sd.InputStream(device=DEVICE_INDEX, samplerate=RATE, channels=1, dtype="int16",
+                    blocksize=BLOCKSIZE, callback=cal_cb, latency="low"):
     time.sleep(CALIBRATE_SECONDS)
 
 baseline_abs = float(np.median(cal))
 sigma_abs = float(np.std(cal))
-auto_thr = max(
-    MIN_ABS_THRESHOLD,
-    baseline_abs + REL_FACTOR * max(1.0, sigma_abs)
-)
+auto_thr = max(MIN_ABS_THRESHOLD, baseline_abs + REL_FACTOR * max(1.0, sigma_abs))
 
 print("✅ Calibration done")
 print(f"   baseline_abs = {int(baseline_abs)}")
@@ -117,25 +168,11 @@ last_fire = 0
 suppress_until = 0
 
 def emit():
-    if BACKEND == "uinput":
-        print("🎵 Emitting PLAY/PAUSE via uinput")
-        ui.write(ecodes.EV_KEY, ecodes.KEY_MEDIA, 1)
-        ui.syn()
-        time.sleep(PRESS_DELAY)
-        ui.write(ecodes.EV_KEY, ecodes.KEY_MEDIA, 0)
-        ui.syn()
-    elif BACKEND == "playerctl":
-        # Fire playerctl play-pause; swallow output
-        print("🎵 Emitting PLAY/PAUSE via playerctl")
-        try:
-            subprocess.run(
-                ["playerctl", "play-pause"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False
-            )
-        except Exception as e:
-            print("❌ Failed to call playerctl:", e)
+    print("🎵 PLAY/PAUSE (emit)")
+    try:
+        emit_func()
+    except Exception as e:
+        print("❌ emit failed:", e)
 
 def cb(indata, frames, t, status):
     global last_fire, suppress_until
@@ -160,12 +197,7 @@ def cb(indata, frames, t, status):
         suppress_until = now + (SUPPRESS_MS / 1000.0)
         events.clear()
 
-        print(
-            time.strftime("[%H:%M:%S]"),
-            "TRIG",
-            "mean_abs", int(mean_abs),
-            "max", maxabs
-        )
+        print(time.strftime("[%H:%M:%S]"), "TRIG", "mean_abs", int(mean_abs), "max", maxabs)
 
 # ---------- Main loop ----------
 print("\n🎧 Listening...")
@@ -173,15 +205,8 @@ print("➡️  Press headset button to trigger play/pause")
 print("➡️  Ctrl+C to exit\n")
 
 try:
-    with sd.InputStream(
-        device=DEVICE_INDEX,
-        samplerate=RATE,
-        channels=1,
-        dtype="int16",
-        blocksize=BLOCKSIZE,
-        callback=cb,
-        latency="low"
-    ):
+    with sd.InputStream(device=DEVICE_INDEX, samplerate=RATE, channels=1, dtype="int16",
+                        blocksize=BLOCKSIZE, callback=cb, latency="low"):
         while True:
             time.sleep(0.2)
 
