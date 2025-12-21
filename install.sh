@@ -20,6 +20,7 @@ sudo apt install -y \
     libasound2-dev \
     alsa-utils \
     git \
+    playerctl \
     python3-evdev
 
 # 3. Clone or update repository
