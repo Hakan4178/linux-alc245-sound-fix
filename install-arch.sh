@@ -20,6 +20,7 @@ sudo pacman -S --needed --noconfirm \
     portaudio \
     alsa-utils \
     git \
+    playerctl \
     python-evdev
 
 # PipeWire users may need JACK compatibility
