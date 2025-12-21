@@ -1,4 +1,4 @@
-# realtek-alc245-linux-fix
+# linux-wired headphones-fix
 
 Realtek ALC245 Linux Fix (Unsolicited / Button Events)
 
